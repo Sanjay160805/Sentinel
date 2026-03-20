@@ -99,35 +99,34 @@ export async function getVaultState(): Promise<VaultState> {
       throw new Error("USER_EVM_ADDRESS not set in .env");
     }
 
-    // Fetch vault state
-    const totalAssets = await contract.totalAssets();
-    const userShares = await contract.balanceOf(userAddress);
-    const totalSupply = await contract.totalSupply();
+    // Fetch vault state - cast to ensure contract has the methods
+    const totalAssetsValue = await (contract as any).totalAssets();
+    const userShares = await (contract as any).balanceOf(userAddress);
+    const totalSupply = await (contract as any).totalSupply();
 
     // Calculate share price and user balance
-    let pricePerShare = 1.0;
-    let assetsPerShare = Number(totalAssets) / 1e18;
+    let sharePrice = 1.0;
 
     if (totalSupply > 0n) {
-      assetsPerShare = Number(totalAssets) / Number(totalSupply);
-      pricePerShare = assetsPerShare;
+      sharePrice = Number(totalAssetsValue) / Number(totalSupply);
     }
 
-    const assets = Number(totalAssets) / 1e18;
-    const tvl = assets * 0.15; // Rough USD estimate with HBAR price $0.15
-    const userBalance = (Number(userShares) * Number(totalAssets)) / Number(totalSupply) / 1e18;
+    const totalAssets = Number(totalAssetsValue) / 1e18;
+    const userBalance = (Number(userShares) * Number(totalAssetsValue)) / Number(totalSupply) / 1e18;
+    const vaultAddress = process.env.BONZO_VAULT_HBAR_USDC || "0x000...";
 
     const vaultState: VaultState = {
-      assets,
-      totalSupply: Number(totalSupply) / 1e18,
-      pricePerShare,
-      tvl,
-      lastUpdate: new Date(),
+      totalAssets,
+      sharePrice,
+      userBalance,
+      userShares: Number(userShares) / 1e18,
+      paused: false,
+      vaultAddress,
     };
 
     console.log(
-      `✓ Vault State: TVL=$${vaultState.tvl.toFixed(0)} | ` +
-        `Price/Share: ${vaultState.pricePerShare.toFixed(6)} | Assets: ${vaultState.assets.toFixed(2)}`,
+      `✓ Vault State: TVL=$${vaultState.totalAssets.toFixed(0)} | ` +
+        `Price/Share: ${vaultState.sharePrice.toFixed(6)} | User Balance: ${vaultState.userBalance.toFixed(2)}`,
     );
 
     return vaultState;
@@ -136,11 +135,12 @@ export async function getVaultState(): Promise<VaultState> {
 
     // Return mock state on error
     return {
-      assets: 125000,
-      totalSupply: 119048,
-      pricePerShare: 1.05,
-      tvl: 18750,
-      lastUpdate: new Date(),
+      totalAssets: 125000,
+      sharePrice: 1.05,
+      userBalance: 5250,
+      userShares: 5000,
+      paused: false,
+      vaultAddress: "MOCK",
     };
   }
 }
@@ -236,7 +236,7 @@ export async function executeEmergencyExit(): Promise<{
     return {
       success: true,
       txHash: mockTxHash,
-      totalAssetsExited: vaultState.assets,
+      totalAssetsExited: vaultState.totalAssets,
     };
   } catch (error) {
     console.error("✗ Failed to execute emergency exit:", error);
@@ -273,11 +273,3 @@ export async function executeVaultAction(
       return { success: false, txHash: "INVALID_ACTION" };
   }
 }
-
-export default {
-  getVaultState,
-  executeHarvest,
-  executeWithdraw,
-  executeEmergencyExit,
-  executeVaultAction,
-};

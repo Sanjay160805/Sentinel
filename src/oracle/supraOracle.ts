@@ -32,8 +32,16 @@ function calculateVolatility(prices: number[]): { volatility: number; trend: Vol
   // Calculate returns (log-returns)
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
-    const ret = Math.log(prices[i] / prices[i - 1]);
-    returns.push(ret);
+    const prevPrice = prices[i - 1];
+    const currPrice = prices[i];
+    if (prevPrice && currPrice) {
+      const ret = Math.log(currPrice / prevPrice);
+      returns.push(ret);
+    }
+  }
+
+  if (returns.length === 0) {
+    return { volatility: 0, trend: VolatilityTrend.STABLE };
   }
 
   // Calculate standard deviation (volatility)
@@ -159,11 +167,11 @@ export async function getVolatilityData(): Promise<VolatilityData> {
     const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2] : currentPrice;
 
     // Calculate 24h change (mock)
-    const priceChangePercent24h = ((currentPrice - previousPrice) / previousPrice) * 100;
+    const priceChangePercent24h = previousPrice ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
 
     const volatilityData: VolatilityData = {
       price: currentPrice,
-      previousPrice,
+      previousPrice: previousPrice || currentPrice,
       volatility,
       trend,
       recommendation,

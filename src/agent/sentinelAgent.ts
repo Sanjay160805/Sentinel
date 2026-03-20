@@ -259,12 +259,3 @@ export const agentStatus: AgentStatus = {
   lastCycleTime: 0,
   threatsDetected: 0,
 };
-
-export default {
-  createSentinelAgent,
-  runAutonomousCycle,
-  runChatCycle,
-  getDashboardStatus,
-  getRecentDecisions,
-  getLoopingStatus,
-};

@@ -69,9 +69,9 @@ export const vaultStateTool = new DynamicTool({
 async function harvest(): Promise<{ success: boolean; txHash: string }> {
   try {
     console.log("🌾 Harvesting vault rewards...");
-    const txHash = await executeHarvest();
-    console.log(`✓ Harvest executed: ${txHash}`);
-    return { success: true, txHash };
+    const result = await executeHarvest();
+    console.log(`✓ Harvest executed: ${result.txHash}`);
+    return { success: result.success, txHash: result.txHash };
   } catch (error) {
     console.error("❌ Harvest failed:", error);
     return { success: false, txHash: "ERROR" };
@@ -101,12 +101,15 @@ export const harvestTool = new DynamicTool({
 /**
  * Execute partial withdrawal (percentage-based)
  */
+/**
+ * Execute partial withdrawal (percentage-based)
+ */
 async function withdraw(percentage: number): Promise<{ success: boolean; txHash: string }> {
   try {
     console.log(`🔽 Withdrawing ${percentage}% of position...`);
-    const txHash = await executeWithdraw(percentage);
-    console.log(`✓ Withdrawal executed: ${txHash}`);
-    return { success: true, txHash };
+    const result = await executeWithdraw(percentage);
+    console.log(`✓ Withdrawal executed: ${result.txHash}`);
+    return { success: result.success, txHash: result.txHash };
   } catch (error) {
     console.error("❌ Withdrawal failed:", error);
     return { success: false, txHash: "ERROR" };
@@ -136,12 +139,15 @@ export const withdrawTool = new DynamicTool({
 /**
  * Execute full emergency exit from vault
  */
+/**
+ * Execute full emergency exit from vault
+ */
 async function emergencyExit(): Promise<{ success: boolean; txHash: string }> {
   try {
     console.log("🚨 EXECUTING EMERGENCY EXIT...");
-    const txHash = await executeEmergencyExit();
-    console.log(`✓ Emergency exit executed: ${txHash}`);
-    return { success: true, txHash };
+    const result = await executeEmergencyExit();
+    console.log(`✓ Emergency exit executed: ${result.txHash}`);
+    return { success: result.success, txHash: result.txHash };
   } catch (error) {
     console.error("❌ Emergency exit failed:", error);
     return { success: false, txHash: "ERROR" };

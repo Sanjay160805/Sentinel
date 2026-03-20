@@ -175,10 +175,10 @@ app.get("/api/decision", (_req: Request, res: Response) => {
       return res.json({ message: "No decision made yet" });
     }
 
-    res.json(agentStatus.lastDecision);
+    return res.json(agentStatus.lastDecision);
   } catch (err) {
     console.error("❌ /api/decision error:", err);
-    res.status(500).json({ error: "Failed to get decision" });
+    return res.status(500).json({ error: "Failed to get decision" });
   }
 });
 
@@ -211,7 +211,7 @@ app.post("/api/agent/run", async (_req: Request, res: Response) => {
     broadcastDecision(decision);
     broadcastStatus();
 
-    res.json({
+    return res.json({
       success: true,
       decision,
       cycleCount: agentStatus.cycleCount,
@@ -219,7 +219,7 @@ app.post("/api/agent/run", async (_req: Request, res: Response) => {
   } catch (err) {
     agentStatus.isRunning = false;
     console.error("❌ /api/agent/run error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to run agent cycle",
       details: err instanceof Error ? err.message : "unknown",
     });
@@ -245,14 +245,14 @@ app.post("/api/agent/chat", async (req: Request, res: Response) => {
     console.log(`💬 Chat request: ${message}`);
     const response = await runChatCycle(message);
 
-    res.json({
+    return res.json({
       userMessage: message,
       agentResponse: response,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
     console.error("❌ /api/agent/chat error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to process chat",
       details: err instanceof Error ? err.message : "unknown",
     });
