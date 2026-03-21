@@ -9,7 +9,7 @@ export async function GET() {
 
     const db = new Database(dbPath, { readonly: true });
     const tweets = db.prepare(
-      'SELECT * FROM tweets ORDER BY created_at DESC LIMIT 100'
+      'SELECT * FROM tweets ORDER BY scraped_at DESC LIMIT 100'
     ).all();
     db.close();
 
