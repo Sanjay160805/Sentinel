@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { getTweetCount } from "@/db/tweets";
+import { getTweetCountAsync } from "@/db/tweets";
 import { getLastDecision } from "@/db/decisions";
 
 export async function GET() {
   try {
-    // Lazy import to prevent agent graph from initializing on every request
     const { getSchedulerStatus } = await import("@/agent/scheduler");
     const status = getSchedulerStatus();
     const lastDecision = getLastDecision();
-    const tweetCount = getTweetCount();
+    const tweetCount = await getTweetCountAsync();
     return NextResponse.json({
       ok: true,
       agent: {
