@@ -2,7 +2,7 @@ import https from 'https';
 import fs from 'fs';
 
 const GITHUB_RAW_DB_URL =
-  'https://github.com/Sanjay160805/Sentinel/raw/data/crypto_tweets.db';
+  'https://github.com/Sanjay160805/Sentinel/raw/data/tweets.db';
 
 let cachedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
