@@ -1,17 +1,23 @@
 import { ThreatAnalysis, VaultPosition } from "@/lib/types";
 import { VolatilityResult } from "@/analysis/volatilityCalculator";
-import { getUserAccountData } from "./lendingPool";
+import { getUserAccountData, deposit, withdraw } from "./lendingPool";
 import { THREAT_THRESHOLD } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { KeeperAction } from "./types";
+import { ethers } from "ethers";
+
+// HBAR wrapped token address on Bonzo testnet
+const WHBAR_ADDRESS = process.env.BONZO_WETH_GATEWAY || "0x0000000000000000000000000000000000163b5a";
+
+// What fraction of position to adjust per action
+const ADJUST_FRACTION = 0.20; // 20%
+const CURRENT_DEPOSIT_HBAR = 10.0;
 
 export async function getVaultPosition(): Promise<VaultPosition> {
   try {
-    // First try reading from EVM contract
     const data = await getUserAccountData();
     const maxUint = BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639935");
 
-    // If contract returns real data use it
     if (data && data.totalCollateralETH > 0n) {
       const healthFactor = data.healthFactor === maxUint
         ? "∞"
@@ -26,22 +32,17 @@ export async function getVaultPosition(): Promise<VaultPosition> {
       };
     }
 
-    // Bonzo on Hedera testnet uses HTS (Hedera Token Service)
-    // EVM getUserAccountData returns 0 because position is stored
-    // in Hedera native token associations not EVM storage.
-    // Fall back to known testnet position confirmed via Bonzo UI.
     logger.info("EVM position empty — using HTS-confirmed position from Bonzo UI");
 
     const { getHBARUSDPrice, getPriceFeedMeta } = await import("@/oracle/priceFeeds");
     const hbarPrice = await getHBARUSDPrice();
     const priceMeta = await getPriceFeedMeta();
-    const depositedHBAR = 10.0;
 
-    logger.info(`Vault position: ${depositedHBAR} HBAR @ $${hbarPrice} = $${(depositedHBAR * hbarPrice).toFixed(2)} | source: ${priceMeta?.source ?? 'unknown'}`);
+    logger.info(`Vault position: ${CURRENT_DEPOSIT_HBAR} HBAR @ $${hbarPrice} = $${(CURRENT_DEPOSIT_HBAR * hbarPrice).toFixed(2)} | source: ${priceMeta?.source ?? 'unknown'}`);
 
     return {
       asset: "HBAR",
-      deposited: depositedHBAR.toFixed(4),
+      deposited: CURRENT_DEPOSIT_HBAR.toFixed(4),
       borrowed: "0.0000",
       healthFactor: "Infinity",
       apy: "94.15%",
@@ -100,23 +101,55 @@ export async function executeKeeperAction(
   action: KeeperAction
 ): Promise<string | null> {
   logger.info(`Executing keeper action: ${action.type}`);
+
   switch (action.type) {
-    case "PROTECT":
-      logger.warn("PROTECT — would withdraw to safety in production");
+
+    case "PROTECT": {
+      // CRITICAL threat — withdraw 50% of position to safety
+      const withdrawHBAR = CURRENT_DEPOSIT_HBAR * 0.50;
+      const withdrawAmount = ethers.parseUnits(withdrawHBAR.toFixed(8), 18);
+      logger.warn(`PROTECT: withdrawing ${withdrawHBAR} HBAR from Bonzo vault`);
+      const txHash = await withdraw(WHBAR_ADDRESS, withdrawAmount);
+      if (txHash) {
+        logger.info(`PROTECT executed — tx: ${txHash}`);
+        return txHash;
+      }
+      logger.warn("PROTECT: withdraw call returned null — HTS position may not be EVM-accessible on testnet");
       return null;
-    case "HARVEST":
-      logger.info("HARVEST — would claim rewards in production");
-      return null;
-    case "REBALANCE":
-      logger.info("REBALANCE — would rebalance in production");
-      return null;
-    case "TIGHTEN":
-      logger.info("TIGHTEN — would tighten ranges in production");
-      return null;
+    }
+
     case "WIDEN":
-      logger.info("WIDEN — would widen ranges in production");
+    case "HARVEST": {
+      // High threat — withdraw 20% to reduce exposure
+      const withdrawHBAR = CURRENT_DEPOSIT_HBAR * ADJUST_FRACTION;
+      const withdrawAmount = ethers.parseUnits(withdrawHBAR.toFixed(8), 18);
+      logger.info(`${action.type}: withdrawing ${withdrawHBAR} HBAR to reduce exposure`);
+      const txHash = await withdraw(WHBAR_ADDRESS, withdrawAmount);
+      if (txHash) {
+        logger.info(`${action.type} executed — tx: ${txHash}`);
+        return txHash;
+      }
+      logger.warn(`${action.type}: withdraw returned null — testnet HTS limitation`);
       return null;
+    }
+
+    case "TIGHTEN": {
+      // Low threat — deposit 20% more to maximise yield
+      const depositHBAR = CURRENT_DEPOSIT_HBAR * ADJUST_FRACTION;
+      const depositAmount = ethers.parseUnits(depositHBAR.toFixed(8), 18);
+      logger.info(`TIGHTEN: depositing ${depositHBAR} more HBAR into Bonzo vault`);
+      const txHash = await deposit(WHBAR_ADDRESS, depositAmount);
+      if (txHash) {
+        logger.info(`TIGHTEN executed — tx: ${txHash}`);
+        return txHash;
+      }
+      logger.warn("TIGHTEN: deposit returned null — testnet HTS limitation");
+      return null;
+    }
+
+    case "HOLD":
     default:
+      logger.info("HOLD — no vault adjustment needed");
       return null;
   }
 }
