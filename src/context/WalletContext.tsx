@@ -1,10 +1,22 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import {
+  createContext, useContext, useState,
+  useCallback, useEffect, useRef, ReactNode,
+} from "react";
+import { HashConnect } from "@hashgraph/hashconnect";
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const APP_METADATA = {
+  name: "Sentinel",
+  description: "Intelligent Keeper Agent on Hedera",
+  icon: "https://sentinel-one-teal.vercel.app/favicon.ico",
+  url: "https://sentinel-one-teal.vercel.app",
+};
 
 interface WalletState {
   connected: boolean;
   accountId: string | null;
-  isOwner: boolean;
   connecting: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -13,60 +25,74 @@ interface WalletState {
 const WalletContext = createContext<WalletState>({
   connected: false,
   accountId: null,
-  isOwner: false,
   connecting: false,
   connect: async () => {},
   disconnect: () => {},
 });
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [connected, setConnected] = useState(false);
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const [connected, setConnected]   = useState(false);
+  const [accountId, setAccountId]   = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal]   = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [inputError, setInputError] = useState("");
-  const [hashpackChecking, setHashpackChecking] = useState(false);
+  const [hcChecking, setHcChecking] = useState(false);
 
+  const hcRef = useRef<HashConnect | null>(null);
+
+  // Restore session on mount
   useEffect(() => {
     const saved = sessionStorage.getItem("sentinel-wallet");
     if (saved) { setAccountId(saved); setConnected(true); }
   }, []);
 
+  // Open the modal
   const connect = useCallback(async () => {
     setShowModal(true);
     setInputValue("");
     setInputError("");
   }, []);
 
- const connectWithHashPack = useCallback(async () => {
-    setHashpackChecking(true);
-    try {
-      const win = window as any;
+  // HashConnect (HashPack browser extension) flow
+  const connectWithHashPack = useCallback(async () => {
+    setHcChecking(true);
+    setInputError("");
 
-      // HashPack specific check — avoid MetaMask interference
-      if (win.hashpack && typeof win.hashpack.requestAccountId === "function") {
-        const result = await win.hashpack.requestAccountId();
-        if (result?.accountId) {
-          const id = result.accountId;
+    try {
+      // Initialise HashConnect once per session
+      if (!hcRef.current) {
+        hcRef.current = new HashConnect();
+        await hcRef.current.init(APP_METADATA, "testnet");
+      }
+
+      const hc = hcRef.current;
+
+      // Listen for the pairing result (fires once)
+      hc.pairingEvent.once((pairingData) => {
+        const id = pairingData?.accountIds?.[0];
+        if (id) {
           setAccountId(id);
           setConnected(true);
           sessionStorage.setItem("sentinel-wallet", id);
           setShowModal(false);
-          return;
+        } else {
+          setInputError("No account returned. Try manual input below.");
         }
-      }
+        setHcChecking(false);
+      });
 
-      // HashPack not installed
-      window.open("https://www.hashpack.app/download", "_blank");
-      setInputError("HashPack not found. Install it or use manual input below.");
-    } catch (e) {
-      setInputError("HashPack connection failed. Use manual input below.");
-    } finally {
-      setHashpackChecking(false);
+      // Initiate connection with HashPack
+      await hc.connect();
+
+    } catch (err: any) {
+      console.error("HashConnect error:", err);
+      setInputError("HashPack connection failed — use manual input below.");
+      setHcChecking(false);
     }
   }, []);
 
+  // Manual account ID input
   const confirmConnect = useCallback(() => {
     const id = inputValue.trim();
     if (!/^0\.0\.\d+$/.test(id)) {
@@ -84,15 +110,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setConnected(false);
     setAccountId(null);
     sessionStorage.removeItem("sentinel-wallet");
+    hcRef.current = null;
   }, []);
-
-  const ownerIds = (process.env.NEXT_PUBLIC_OWNER_WALLET_ID || "")
-    .split(",").map(id => id.trim());
-  const isOwner = connected && !!accountId && ownerIds.includes(accountId);
 
   return (
     <WalletContext.Provider value={{
-      connected, accountId, isOwner, connecting, connect, disconnect,
+      connected, accountId, connecting, connect, disconnect,
     }}>
       {children}
 
@@ -142,17 +165,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             {/* HashPack button */}
             <button
               onClick={connectWithHashPack}
-              disabled={hashpackChecking}
+              disabled={hcChecking}
               style={{
                 width: "100%", padding: "0.85rem",
                 borderRadius: 12, marginBottom: "1rem",
                 border: "2px solid #e8eaf0",
-                background: "white", cursor: "pointer",
+                background: "white", cursor: hcChecking ? "wait" : "pointer",
                 display: "flex", alignItems: "center", gap: "0.75rem",
                 transition: "all 0.15s",
                 fontSize: "0.9rem", fontWeight: 600, color: "#1a1d2e",
+                opacity: hcChecking ? 0.7 : 1,
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = "#7c3aed")}
+              onMouseEnter={e => !hcChecking && (e.currentTarget.style.borderColor = "#7c3aed")}
               onMouseLeave={e => (e.currentTarget.style.borderColor = "#e8eaf0")}
             >
               <div style={{
@@ -168,7 +192,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
               </div>
               <div style={{ textAlign: "left" }}>
                 <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>
-                  {hashpackChecking ? "Connecting to HashPack..." : "Connect with HashPack"}
+                  {hcChecking ? "Waiting for HashPack..." : "Connect with HashPack"}
                 </div>
                 <div style={{ fontSize: "0.7rem", color: "#6b7280", fontWeight: 400 }}>
                   Browser extension wallet
@@ -182,9 +206,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             {/* Divider */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
               <div style={{ flex: 1, height: 1, background: "#e8eaf0" }} />
-              <span style={{ fontSize: "0.72rem", color: "#9ca3af", fontWeight: 500 }}>
-                or enter manually
-              </span>
+              <span style={{ fontSize: "0.72rem", color: "#9ca3af", fontWeight: 500 }}>or enter manually</span>
               <div style={{ flex: 1, height: 1, background: "#e8eaf0" }} />
             </div>
 
@@ -211,6 +233,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                   fontFamily: "JetBrains Mono, monospace",
                   color: "#1a1d2e",
                   transition: "border-color 0.15s",
+                  boxSizing: "border-box",
                 }}
                 onFocus={e => (e.target.style.borderColor = "#7c3aed")}
                 onBlur={e => (e.target.style.borderColor = inputError ? "#ef4444" : "#e8eaf0")}
