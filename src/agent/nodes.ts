@@ -78,13 +78,33 @@ export async function decideNode(state: AgentStateType): Promise<Partial<AgentSt
 export async function executeNode(state: AgentStateType): Promise<Partial<AgentStateType>> {
   if (!state.decision) return {};
   logger.info(`[Cycle #${state.cycle}] Executing: ${state.decision.action}`);
-  const txHash = await executeKeeperAction({
-    type: state.decision.action as any,
-    reason: state.decision.reasoning,
-  });
-  const finalDecision = { ...state.decision, executed: !!txHash, tx_hash: txHash || undefined };
-  const id = saveDecision(finalDecision);
-  finalDecision.id = id;
-  await logDecisionToHCS(finalDecision);
-  return { decision: finalDecision };
+  try {
+    const txHash = await executeKeeperAction({
+      type: state.decision.action as any,
+      reason: state.decision.reasoning,
+    });
+
+    const id = saveDecision({
+      ...state.decision,
+      executed: !!txHash,
+      tx_hash: txHash || undefined,
+    });
+
+    const finalDecision = {
+      ...state.decision,
+      id,
+      executed: !!txHash,
+      tx_hash: txHash || undefined,
+    };
+
+    // Non-blocking — HCS failure won't crash the graph
+    logDecisionToHCS(finalDecision).catch(e =>
+      logger.warn("HCS logging failed silently", e)
+    );
+
+    return { decision: finalDecision };
+  } catch (error) {
+    logger.error(`[Cycle #${state.cycle}] Execute node failed`, error);
+    return { decision: { ...state.decision, executed: false } };
+  }
 }

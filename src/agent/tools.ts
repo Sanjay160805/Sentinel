@@ -1,11 +1,11 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { getHBARPrice } from "@/oracle/priceFeeds";
+import { getHBARUSDPrice } from "@/oracle/priceFeeds";
 import { scoreThreat } from "@/analysis/threatScorer";
 import { getVaultPosition } from "@/bonzo/keeper";
 
 export const oraclePriceTool = tool(
-  async () => JSON.stringify(await getHBARPrice()),
+  async () => JSON.stringify(await getHBARUSDPrice()),
   { name: "get_oracle_price", description: "Get current HBAR/USDC price from Supra Oracle", schema: z.object({}) }
 );
 

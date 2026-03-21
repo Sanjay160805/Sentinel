@@ -12,7 +12,7 @@ export async function retrieveContext(
     if (docs.length > 0) {
       return docs
         .map(
-          (doc, i) =>
+          (doc: Document, i: number) =>
             `[${i + 1}] ${doc.pageContent} (${doc.metadata.time || doc.metadata.scraped_at})`
         )
         .join("\n\n");
@@ -26,7 +26,7 @@ export async function retrieveContext(
   const allDocs = getCachedDocs();
 
   const matched = allDocs
-    .filter((doc) =>
+    .filter((doc: Document) =>
       keywords.some((kw) => doc.pageContent.toLowerCase().includes(kw))
     )
     .slice(0, k);
@@ -35,13 +35,13 @@ export async function retrieveContext(
     const fallback = allDocs.slice(0, k);
     if (fallback.length === 0) return "No relevant recent tweets found.";
     return fallback
-      .map((doc, i) => `[${i + 1}] ${doc.pageContent}`)
+      .map((doc: Document, i: number) => `[${i + 1}] ${doc.pageContent}`)
       .join("\n\n");
   }
 
   return matched
     .map(
-      (doc, i) =>
+      (doc: Document, i: number) =>
         `[${i + 1}] ${doc.pageContent} (${doc.metadata.time || doc.metadata.scraped_at})`
     )
     .join("\n\n");

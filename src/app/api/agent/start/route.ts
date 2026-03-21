@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { startScheduler, getSchedulerStatus } from "@/agent/scheduler";
 
 export async function POST() {
   try {
+    const { startScheduler, getSchedulerStatus } = await import("@/agent/scheduler");
     startScheduler();
     return NextResponse.json({ ok: true, status: getSchedulerStatus() });
   } catch (error) {
