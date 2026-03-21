@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { WalletProvider } from "@/context/WalletContext";
 
 export const metadata: Metadata = {
   title: "Sentinel — Intelligent Keeper Agent",
@@ -10,13 +11,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        {/* Animated background */}
+        {/* Animated background hexagons */}
         <div className="bg-animated">
           {[...Array(8)].map((_, i) => (
             <svg
               key={i}
               className="hex-particle"
-              width="40" height="46"
               viewBox="0 0 40 46"
               style={{
                 left: `${10 + i * 12}%`,
@@ -34,7 +34,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </svg>
           ))}
         </div>
-        {children}
+        {/* Wrap everything in WalletProvider */}
+        <WalletProvider>
+          {children}
+        </WalletProvider>
       </body>
     </html>
   );
