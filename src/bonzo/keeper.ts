@@ -33,17 +33,17 @@ export async function getVaultPosition(): Promise<VaultPosition> {
     logger.info("EVM position empty — using HTS-confirmed position from Bonzo UI");
 
     const { getHBARUSDPrice, getPriceFeedMeta } = await import("@/oracle/priceFeeds");
-const hbarPrice = await getHBARUSDPrice();
-const priceMeta = await getPriceFeedMeta();
-const depositedHBAR = 10.0;
+    const hbarPrice = await getHBARUSDPrice();
+    const priceMeta = await getPriceFeedMeta();
+    const depositedHBAR = 10.0;
 
-logger.info(`Vault position: ${depositedHBAR} HBAR @ $${hbarPrice} = $${(depositedHBAR * hbarPrice).toFixed(2)} | source: ${priceMeta?.source ?? 'unknown'}`);
+    logger.info(`Vault position: ${depositedHBAR} HBAR @ $${hbarPrice} = $${(depositedHBAR * hbarPrice).toFixed(2)} | source: ${priceMeta?.source ?? 'unknown'}`);
 
     return {
       asset: "HBAR",
       deposited: depositedHBAR.toFixed(4),
       borrowed: "0.0000",
-      healthFactor: "∞",
+      healthFactor: "Infinity",
       apy: "94.15%",
       rewards: "0.0000",
     };

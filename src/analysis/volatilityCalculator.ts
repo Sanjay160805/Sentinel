@@ -1,4 +1,3 @@
-import { getPriceHistory, calculateRealizedVolatility } from "@/oracle/priceFeeds";
 import { VOLATILITY_THRESHOLD } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 
@@ -7,6 +6,27 @@ export interface VolatilityResult {
   isHigh: boolean;
   level: "LOW" | "MEDIUM" | "HIGH";
   trend: "INCREASING" | "DECREASING" | "STABLE";
+}
+
+// In-memory price history — built up across agent cycles
+const priceHistory: { price: number; timestamp: number }[] = [];
+
+export function recordPrice(price: number) {
+  priceHistory.push({ price, timestamp: Date.now() });
+  if (priceHistory.length > 100) priceHistory.shift();
+}
+
+export function getPriceHistory() {
+  return [...priceHistory];
+}
+
+export function calculateRealizedVolatility(): number {
+  if (priceHistory.length < 2) return 0;
+  const prices = priceHistory.slice(-20).map(p => p.price);
+  const returns = prices.slice(1).map((p, i) => Math.log(p / prices[i]));
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / returns.length;
+  return Math.sqrt(variance);
 }
 
 export function calculateVolatility(): VolatilityResult {
@@ -23,7 +43,12 @@ export function calculateVolatility(): VolatilityResult {
       if (change > 0.01) trend = "INCREASING";
       else if (change < -0.01) trend = "DECREASING";
     }
-    return { realized: vol, isHigh: vol > VOLATILITY_THRESHOLD, level: vol > VOLATILITY_THRESHOLD * 2 ? "HIGH" : vol > VOLATILITY_THRESHOLD ? "MEDIUM" : "LOW", trend };
+    return {
+      realized: vol,
+      isHigh: vol > VOLATILITY_THRESHOLD,
+      level: vol > VOLATILITY_THRESHOLD * 2 ? "HIGH" : vol > VOLATILITY_THRESHOLD ? "MEDIUM" : "LOW",
+      trend,
+    };
   } catch (error) {
     logger.error("Volatility calculation failed", error);
     return { realized: 0, isHigh: false, level: "LOW", trend: "STABLE" };

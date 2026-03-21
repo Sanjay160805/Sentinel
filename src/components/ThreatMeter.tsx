@@ -1,35 +1,76 @@
 "use client";
-export default function ThreatMeter({ score, action, reasoning }: { score: number; action: string; reasoning: string }) {
-  const percentage = Math.round(score * 100);
-  const getColor = () => {
-    if (score < 0.3) return { bar: "bg-green-500", text: "text-green-400", label: "LOW" };
-    if (score < 0.65) return { bar: "bg-yellow-500", text: "text-yellow-400", label: "MEDIUM" };
-    if (score < 0.85) return { bar: "bg-orange-500", text: "text-orange-400", label: "HIGH" };
-    return { bar: "bg-red-500", text: "text-red-400", label: "CRITICAL" };
+import { useEffect, useState } from "react";
+
+export default function ThreatMeter() {
+  const [score, setScore] = useState(0);
+  const [level, setLevel] = useState("LOW");
+  const [action, setAction] = useState("—");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await fetch("/api/status").then(x => x.json());
+        const d = r.agent?.lastDecision;
+        if (d) {
+          setScore(d.threatScore ?? 0);
+          setLevel(d.threatLevel ?? "LOW");
+          setAction(d.action ?? "—");
+          setReason(d.reasoning ?? d.reason ?? "");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  const pct = Math.round(score * 100);
+  const levelColor: Record<string, string> = {
+    LOW: "#10b981", MEDIUM: "#f59e0b", HIGH: "#ef4444", CRITICAL: "#9d174d"
   };
-  const { bar, text, label } = getColor();
+  const color = levelColor[level] ?? "#10b981";
+
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-white font-semibold text-lg">Threat Level</h2>
-        <span className={`font-bold text-xl ${text}`}>{label}</span>
+    <div className="card">
+      <div className="card-accent" style={{ background: "linear-gradient(90deg, #f59e0b, #ef4444)" }} />
+      <div className="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Threat Level
+        {!loading && (
+          <span className="badge" style={{ marginLeft: "auto", background: color + "22", color }}>
+            {level}
+          </span>
+        )}
       </div>
-      <div className="mb-4">
-        <div className="flex justify-between text-sm text-gray-400 mb-1">
-          <span>Threat Score</span>
-          <span className={text}>{percentage}%</span>
-        </div>
-        <div className="w-full bg-gray-700 rounded-full h-4">
-          <div className={`${bar} h-4 rounded-full transition-all duration-700`} style={{ width: `${percentage}%` }} />
-        </div>
-      </div>
-      <div className="mt-4 pt-4 border-t border-gray-700">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-gray-400 text-sm">Last Action:</span>
-          <span className="text-white font-mono text-sm bg-gray-800 px-2 py-0.5 rounded">{action}</span>
-        </div>
-        <p className="text-gray-400 text-xs leading-relaxed">{reasoning}</p>
-      </div>
+
+      {loading ? (
+        <div style={{ height: 100, background: "#f1f5f9", borderRadius: 8, animation: "shimmer 1.5s infinite" }} />
+      ) : (
+        <>
+          <div className="mono" style={{ fontSize: "2.5rem", fontWeight: 700, color, lineHeight: 1, marginBottom: "0.5rem" }}>
+            {pct}%
+          </div>
+          <div className="threat-bar-track">
+            <div className="threat-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>Last action:</span>
+            <span className={`badge badge-${action.toLowerCase()}`}>{action}</span>
+          </div>
+          {reason && (
+            <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", lineHeight: 1.6, borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+              {reason}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
