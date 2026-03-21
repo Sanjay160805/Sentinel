@@ -21,7 +21,7 @@ export default function PositionCard() {
   const [amount, setAmount] = useState("");
   const [txLoading, setTxLoading] = useState(false);
   const [txResult, setTxResult] = useState<{ ok: boolean; message: string; txHash?: string } | null>(null);
-  const { connected, isOwner } = useWallet();
+  const { connected } = useWallet();
 
   const loadPosition = async () => {
     try {

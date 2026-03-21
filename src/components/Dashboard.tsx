@@ -19,7 +19,7 @@ export default function Dashboard() {
   const [vaultApy, setVaultApy] = useState<string>("—");
   const [lastScraped, setLastScraped] = useState<string | null>(null);
   const [nextUpdate, setNextUpdate] = useState<number>(60);
-  const { connected, accountId, isOwner, connect, disconnect } = useWallet();
+  const { connected, accountId, connect, disconnect } = useWallet();
 
   // Load status + tweet count
   useEffect(() => {
@@ -191,45 +191,31 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="topbar-right">
-            {isOwner && (
-              <>
-                <button
-                  className={`btn ${agentRunning ? "btn-ghost" : "btn-primary"}`}
-                  onClick={handleStartStop}
-                >
-                  {agentRunning ? "Stop Agent" : "Start Agent"}
-                </button>
-                <button
-                  className="btn btn-outline"
-                  onClick={handleRunCycle}
-                  disabled={cycleRunning}
-                >
-                  {cycleRunning ? (
-                    <>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2"
-                        style={{ animation: "spin 1s linear infinite" }}>
-                        <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                      </svg>
-                      Running...
-                    </>
-                  ) : "⚡ Run Cycle"}
-                </button>
-              </>
-            )}
+            <button
+              className={`btn ${agentRunning ? "btn-ghost" : "btn-primary"}`}
+              onClick={handleStartStop}
+            >
+              {agentRunning ? "Stop Agent" : "Start Agent"}
+            </button>
+            <button
+              className="btn btn-outline"
+              onClick={handleRunCycle}
+              disabled={cycleRunning}
+            >
+              {cycleRunning ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    style={{ animation: "spin 1s linear infinite" }}>
+                    <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                  </svg>
+                  Running...
+                </>
+              ) : "⚡ Run Cycle"}
+            </button>
             <WalletConnect />
           </div>
         </div>
-
-        {isOwner && (
-          <div className="owner-banner">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"
-                fill="#7c3aed"/>
-            </svg>
-            Owner access granted — <span className="mono">{accountId}</span> — Full agent control enabled
-          </div>
-        )}
 
         {lastCycle && (
           <div style={{
