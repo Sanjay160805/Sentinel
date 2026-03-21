@@ -3,7 +3,10 @@ import { getHederaClient } from "./client";
 import { AgentDecision } from "@/lib/types";
 import { logger } from "@/lib/logger";
 
-export async function logDecisionToHCS(decision: AgentDecision): Promise<string | null> {
+export async function logDecisionToHCS(
+  decision: AgentDecision,
+  walletId?: string
+): Promise<string | null> {
   const topicId = process.env.HCS_TOPIC_ID;
   if (!topicId || topicId === "0.0.XXXXXX" || topicId === "") {
     logger.warn("HCS_TOPIC_ID not set, skipping HCS logging");
@@ -20,8 +23,12 @@ export async function logDecisionToHCS(decision: AgentDecision): Promise<string 
       volatility: decision.volatility,
       price: decision.price,
       reasoning: decision.reasoning.slice(0, 500),
+      wallet_id: walletId ?? process.env.HEDERA_ACCOUNT_ID ?? "unknown",
     });
-    const tx = await new TopicMessageSubmitTransaction().setTopicId(TopicId.fromString(topicId)).setMessage(message).execute(client);
+    const tx = await new TopicMessageSubmitTransaction()
+      .setTopicId(TopicId.fromString(topicId))
+      .setMessage(message)
+      .execute(client);
     const txHash = tx.transactionId?.toString() || "";
     logger.info(`HCS message submitted: ${txHash}`);
     return txHash;
@@ -31,13 +38,23 @@ export async function logDecisionToHCS(decision: AgentDecision): Promise<string 
   }
 }
 
-export async function logEventToHCS(eventType: string, data: Record<string, unknown>): Promise<void> {
+export async function logEventToHCS(
+  eventType: string,
+  data: Record<string, unknown>
+): Promise<void> {
   const topicId = process.env.HCS_TOPIC_ID;
   if (!topicId || topicId === "0.0.XXXXXX" || topicId === "") return;
   try {
     const client = getHederaClient();
-    const message = JSON.stringify({ type: eventType, timestamp: new Date().toISOString(), ...data });
-    await new TopicMessageSubmitTransaction().setTopicId(TopicId.fromString(topicId)).setMessage(message).execute(client);
+    const message = JSON.stringify({
+      type: eventType,
+      timestamp: new Date().toISOString(),
+      ...data,
+    });
+    await new TopicMessageSubmitTransaction()
+      .setTopicId(TopicId.fromString(topicId))
+      .setMessage(message)
+      .execute(client);
   } catch (error) {
     logger.error("HCS event log failed", error);
   }

@@ -20,12 +20,17 @@ export default function WalletConnect() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill={isOwner ? "#7c3aed" : "#6b7280"}/>
+            <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"
+              fill={isOwner ? "#7c3aed" : "#6b7280"}/>
           </svg>
           <span className="mono" style={{ fontSize: "0.75rem", fontWeight: 600, color: isOwner ? "#6d28d9" : "#374151" }}>
             {accountId}
           </span>
-          {isOwner && <span className="badge badge-tighten" style={{ fontSize: "0.6rem", padding: "0.1rem 0.35rem" }}>Owner</span>}
+          {isOwner && (
+            <span className="badge badge-tighten" style={{ fontSize: "0.6rem", padding: "0.1rem 0.35rem" }}>
+              Owner
+            </span>
+          )}
         </div>
         {showDrop && (
           <div
@@ -49,7 +54,8 @@ export default function WalletConnect() {
   return (
     <button className="btn btn-primary" onClick={connect} disabled={connecting}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="white" fillOpacity="0.9"/>
+        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"
+          fill="white" fillOpacity="0.9"/>
       </svg>
       {connecting ? "Connecting..." : "Connect Wallet"}
     </button>
