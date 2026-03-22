@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
-import { logDecisionToHCS } from "@/hedera/hcs";
 
 export const maxDuration = 60;
 
@@ -8,57 +7,26 @@ export async function POST() {
   try {
     const { runAgentCycle } = await import("@/agent/index");
     
-    // Apply 35-second timeout to Gemini analysis (with graceful fallback)
-    logger.info("⏱️ Starting analysis with 35s timeout");
-    let result: { decision: any; position: any } | null = null;
+    // Run cycle with graceful fallback on timeout
+    logger.info("⏱️ Starting cycle with 50s timeout");
+    let result;
     try {
       result = await Promise.race([
         runAgentCycle(),
         new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Analysis timeout after 35s')), 35000)
+          setTimeout(() => reject(new Error('Cycle timeout after 50s')), 50000)
         )
-      ]) as { decision: any; position: any };
+      ]);
     } catch (timeoutError) {
-      logger.warn("⏰ Analysis timeout - using fallback decision");
-      // Fallback: HOLD decision when analysis times out
-      result = {
-        decision: {
-          action: "HOLD",
-          type: "HOLD",
-          reason: "Analysis timeout - defaulting to HOLD",
-          threat_score: 0.5,
-          volatility: { realized: 0, isHigh: false, level: "LOW" },
-          price: 0,
-          cycle: 0,
-          timestamp: new Date().toISOString(),
-        },
-        position: {
-          asset: "HBAR",
-          deposited: "0.0000",
-          borrowed: "0.0000",
-          healthFactor: "∞",
-          apy: "94.15%",
-          rewards: "0.0000",
-        },
-      };
+      logger.warn("⏰ Cycle timeout - graph nodes may have logged partial decision");
+      result = null;
     }
     
     if (!result) {
       return NextResponse.json(
-        { ok: false, message: "No decision produced" },
+        { ok: false, message: "Cycle produced no decision" },
         { status: 400 }
       );
-    }
-
-    // Log decision to HCS IMMEDIATELY after determining action
-    if (result.decision) {
-      try {
-        logger.info("📢 Submitting decision to HCS...");
-        await logDecisionToHCS(result.decision);
-        logger.info("✓ Decision logged to HCS");
-      } catch (hcsError) {
-        logger.error("HCS logging failed, but continuing", hcsError);
-      }
     }
 
     // Fire-and-forget: execute the keeper action independently
