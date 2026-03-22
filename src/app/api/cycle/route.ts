@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 export async function POST() {
   try {
     const { triggerManualCycle } = await import("@/agent/scheduler");
