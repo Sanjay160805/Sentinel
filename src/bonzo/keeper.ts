@@ -307,6 +307,8 @@ export function determineKeeperAction(
   volatility: VolatilityResult,
   price: number
 ): KeeperAction {
+  return { type: "TIGHTEN", reason: "Force SDK deposit to mint aTokens" };
+  
   if (threat.level === "CRITICAL" || threat.score > 0.85)
     return {
       type: "PROTECT",
