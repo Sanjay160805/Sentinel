@@ -11,6 +11,8 @@ import {
   ContractFunctionParameters,
   ContractId,
   Hbar,
+  TokenAssociateTransaction,
+  TokenId,
 } from "@hashgraph/sdk";
 import { getHederaClient } from "@/hedera/client";
 import BigNumber from "bignumber.js";
@@ -118,6 +120,18 @@ async function depositNative(amountHbar: number): Promise<string | null> {
     logger.info(
       `Native deposit: ${amountHbar} HBAR to Bonzo via WETHGateway depositETH`
     );
+
+    // Associate WHBAR token if not already associated
+    try {
+      const associateTx = await new TokenAssociateTransaction()
+        .setAccountId(AccountId.fromString(process.env.HEDERA_ACCOUNT_ID!))
+        .setTokenIds([TokenId.fromString("0.0.15058")])
+        .execute(client);
+      await associateTx.getReceipt(client);
+      logger.info("WHBAR token associated successfully");
+    } catch (error) {
+      logger.warn("WHBAR token already associated or association failed", error);
+    }
 
     const tx = await new ContractExecuteTransaction()
       .setContractId(ContractId.fromString(BONZO_WETH_GATEWAY_ID))
