@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
-export const maxDuration = 1220;
+export const maxDuration = 120;
 
 export async function POST() {
   try {
