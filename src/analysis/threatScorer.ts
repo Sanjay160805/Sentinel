@@ -71,8 +71,13 @@ Respond in this exact JSON format with no other text:
       summary: result.summary || "No significant threats detected",
     };
 
-  } catch (error) {
-    logger.error("Gemini threat scoring failed — using keyword fallback", error);
+  } catch (error: any) {
+    // Log concisely — Gemini rate limiting is expected, fallback handles it
+    if (error.status === 429) {
+      logger.warn("Gemini rate limited (429) — using keyword analysis fallback");
+    } else {
+      logger.error("Threat scoring failed", error?.message || String(error));
+    }
 
     // Keyword fallback when Gemini fails
     try {
