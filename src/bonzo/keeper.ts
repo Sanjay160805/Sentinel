@@ -4,27 +4,9 @@ import { getUserAccountData } from "./lendingPool";
 import { THREAT_THRESHOLD } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { KeeperAction } from "./types";
-import {
-  AccountId,
-  ContractCallQuery,
-  ContractExecuteTransaction,
-  ContractFunctionParameters,
-  ContractId,
-  Hbar,
-  TokenAssociateTransaction,
-  TokenId,
-} from "@hashgraph/sdk";
-import { getHederaClient } from "@/hedera/client";
-import BigNumber from "bignumber.js";
+import { ethers } from "ethers";
 
 // ─── Contract addresses (testnet) ─────────────────────────────────────────────
-const BONZO_WETH_GATEWAY_ID  = "0.0.4999384"; // WETHGateway Hedera ID
-const BONZO_WETH_GATEWAY_EVM = "0x16197Ef10F26De77C9873d075f8774BdEc20A75d";
-const BONZO_LENDING_POOL_EVM =
-  process.env.BONZO_LENDING_POOL ?? "0xf67DBe9bD1B331cA379c44b5562EAa1CE831EbC2";
-const BONZO_DATA_PROVIDER_ID = "0.0.4999382"; // AaveProtocolDataProvider Hedera ID
-const WHBAR_EVM              = "0x0000000000000000000000000000000000163b5a"; // WHBAR testnet
-
 // Used only for vault-balance tracking (tx-history fallback)
 const BONZO_CONTRACT_ID = "0.0.7154915";
 
@@ -32,189 +14,96 @@ const ADJUST_FRACTION = 0.20;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Convert HBAR float → wei as a BigNumber.
- * addUint256() accepts string | number | BigNumber | Long.
- * 1 HBAR = 1e8 tinybars = 1e18 wei on Hedera EVM.
- */
-function hbarToWei(amountHbar: number): BigNumber {
-  // Multiply in BigInt to avoid float precision loss, then convert to BigNumber
-  return new BigNumber((BigInt(Math.floor(amountHbar * 1e8)) * BigInt(1e10)).toString());
-}
+const WETH_GATEWAY_ADDRESS = "0x16197Ef10F26De77C9873d075f8774BdEc20A75d";
+const ATOKEN_ADDRESS = "0x6e96a607F2F5657b39bf58293d1A006f9415aF32";
+const LENDING_POOL_ADDRESS = "0xf67DBe9bD1B331cA379c44b5562EAa1CE831EbC2";
+const RPC_URL = "https://testnet.hashio.io/api";
+
+const WETH_GATEWAY_ABI = [
+  "function depositETH(address lendingPool, address onBehalfOf, uint16 referralCode) payable",
+  "function withdrawETH(address lendingPool, uint256 amount, address to)",
+];
+
+const ERC20_ABI = ["function approve(address spender, uint256 amount) returns (bool)"];
 
 /**
- * Query AaveProtocolDataProvider for the aToken EVM address for WHBAR.
- * Returns the EVM hex address (e.g. "0xAbc...").
+ * Get ethers wallet from private key
  */
-async function getATokenAddress(): Promise<string> {
-  const client = getHederaClient();
-
-  logger.info("Querying DataProvider for WHBAR aToken address...");
-
-  const result = await new ContractCallQuery()
-    .setContractId(ContractId.fromString(BONZO_DATA_PROVIDER_ID))
-    .setGas(100_000)
-    .setFunction(
-      "getReserveTokensAddresses",
-      new ContractFunctionParameters().addAddress(WHBAR_EVM)
-    )
-    .execute(client);
-
-  // Returns (aTokenAddress, stableDebtTokenAddress, variableDebtTokenAddress)
-  const aTokenEVM = "0x" + result.getAddress(0);
-  logger.info(`WHBAR aToken EVM address: ${aTokenEVM}`);
-  return aTokenEVM;
-}
-
-/**
- * Convert an EVM hex address to a Hedera ContractId.
- */
-function evmToContractId(evmAddress: string): ContractId {
-  // Strip 0x prefix if present
-  const clean = evmAddress.startsWith("0x") ? evmAddress.slice(2) : evmAddress;
-  return ContractId.fromEvmAddress(0, 0, clean);
-}
-
-// ─── Step 1: Approve aToken spend ─────────────────────────────────────────────
-/**
- * Call aToken.approve(WETHGateway, amount) so the gateway can burn our aTokens.
- * This is mandatory before calling withdrawETH — skipping it causes CONTRACT_REVERT_EXECUTED.
- */
-async function approveAToken(
-  aTokenContractId: ContractId,
-  amountWei: BigNumber
-): Promise<void> {
-  const client = getHederaClient();
-
-  logger.info(
-    `Approving aToken ${aTokenContractId.toString()} for WETHGateway, amount: ${amountWei.toString()}`
-  );
-
-  const approveTx = await new ContractExecuteTransaction()
-    .setContractId(aTokenContractId)
-    .setGas(150_000)
-    .setFunction(
-      "approve",
-      new ContractFunctionParameters()
-        .addAddress(BONZO_WETH_GATEWAY_EVM) // spender = WETHGateway
-        .addUint256(new BigNumber(amountWei))              // amount to allow
-    )
-    .execute(client);
-
-  const approveReceipt = await approveTx.getReceipt(client);
-  logger.info(`aToken approve status: ${approveReceipt.status.toString()}`);
-
-  if (approveReceipt.status.toString() !== "SUCCESS") {
-    throw new Error(`aToken approve failed: ${approveReceipt.status.toString()}`);
+function getWallet(): ethers.Wallet {
+  let pk = process.env.HEDERA_PRIVATE_KEY ?? "";
+  if (!pk.startsWith("0x")) {
+    // Hedera DER key — strip 24-char header to get raw 32-byte key
+    pk = "0x" + pk.slice(24);
   }
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  return new ethers.Wallet(pk, provider);
 }
 
-// ─── Native Hedera SDK deposit ─────────────────────────────────────────────────
+// ─── Native deposit via ethers.js ────────────────────────────────────────────
 async function depositNative(amountHbar: number): Promise<string | null> {
   try {
-    const client = getHederaClient();
-    const accountId = AccountId.fromString(process.env.HEDERA_ACCOUNT_ID!);
-    const operatorEvm = `0x${accountId.toSolidityAddress()}`;
-
-    // Step 1: Associate WHBAR token if not already
-    try {
-      const associateTx = await new TokenAssociateTransaction()
-        .setAccountId(accountId)
-        .setTokenIds([TokenId.fromString("0.0.15058")])
-        .freezeWith(client)
-        .execute(client);
-      await associateTx.getReceipt(client);
-      logger.info("WHBAR token associated successfully");
-    } catch (e: any) {
-      if (e?.status?.toString() === "TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT") {
-        logger.info("WHBAR already associated, continuing");
-      } else {
-        logger.error("Token associate failed", e?.message ?? e);
-        return null;
-      }
-    }
-
-    // Step 2: Deposit via WETHGateway
-    logger.info(`Depositing ${amountHbar} HBAR via WETHGateway depositETH`);
-    const tx = await new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString("0.0.4999384"))
-      .setGas(500000)
-      .setFunction(
-        "depositETH",
-        new ContractFunctionParameters()
-          .addAddress("0xf67DBe9bD1B331cA379c44b5562EAa1CE831EbC2")
-          .addAddress(operatorEvm)
-          .addUint16(0)
-      )
-      .setPayableAmount(new Hbar(amountHbar))
-      .execute(client);
-
-    const receipt = await tx.getReceipt(client);
-    logger.info(`depositETH status: ${receipt.status}`);
-    return tx.transactionId.toString();
-  } catch (error: any) {
-    logger.error(
-      "Native deposit failed",
-      error?.message ?? JSON.stringify(error)
+    const wallet = getWallet();
+    const contract = new ethers.Contract(
+      WETH_GATEWAY_ADDRESS,
+      WETH_GATEWAY_ABI,
+      wallet
     );
+
+    logger.info(`Depositing ${amountHbar} HBAR via WETHGateway.depositETH`);
+
+    const tx = await contract.depositETH(
+      LENDING_POOL_ADDRESS,
+      wallet.address,
+      0,
+      { value: ethers.parseEther(amountHbar.toString()) }
+    );
+
+    logger.info(`depositETH tx submitted: ${tx.hash}`);
+    const receipt = await tx.wait();
+    logger.info(`depositETH confirmed: ${receipt?.hash}, status: ${receipt?.status}`);
+    return receipt?.hash ?? tx.hash;
+  } catch (error: any) {
+    logger.error("Native deposit failed", error?.message ?? JSON.stringify(error));
     return null;
   }
 }
 
-// ─── Native Hedera SDK withdraw (with aToken approve) ─────────────────────────
-/**
- * Full 3-step withdraw:
- *   1. Query DataProvider → get aToken EVM address
- *   2. aToken.approve(WETHGateway, amount)        ← the missing step that caused the revert
- *   3. WETHGateway.withdrawETH(lendingPool, amount, onBehalfOf)
- */
+// ─── Native withdraw via ethers.js ───────────────────────────────────────────
 async function withdrawNative(amountHbar: number): Promise<string | null> {
   try {
-    const client = getHederaClient();
-    const operatorEvm = `0x${AccountId.fromString(
-      process.env.HEDERA_ACCOUNT_ID!
-    ).toSolidityAddress()}`;
+    const wallet = getWallet();
+    const amountWei = ethers.parseEther(amountHbar.toString());
 
-    // Use MaxUint256 when withdrawing whole position, otherwise exact wei
-    const amountWei = hbarToWei(amountHbar);
+    logger.info(`Withdrawing ${amountHbar} HBAR from Bonzo`);
 
+    // Step 1: Approve aToken to be spent by WETHGateway
+    logger.info(`Approving aToken for WETHGateway: ${amountWei.toString()}`);
+    const aTokenContract = new ethers.Contract(ATOKEN_ADDRESS, ERC20_ABI, wallet);
+    const approveTx = await aTokenContract.approve(WETH_GATEWAY_ADDRESS, amountWei);
+    await approveTx.wait();
+    logger.info(`aToken approved: ${approveTx.hash}`);
+
+    // Step 2: Call withdrawETH
     logger.info(
-      `Native withdraw: ${amountHbar} HBAR from Bonzo (${amountWei} wei)`
+      `Calling WETHGateway.withdrawETH: lendingPool=${LENDING_POOL_ADDRESS}, amount=${amountWei}, to=${wallet.address}`
+    );
+    const contract = new ethers.Contract(
+      WETH_GATEWAY_ADDRESS,
+      WETH_GATEWAY_ABI,
+      wallet
+    );
+    const tx = await contract.withdrawETH(
+      LENDING_POOL_ADDRESS,
+      amountWei,
+      wallet.address
     );
 
-    // ── Step 1: Get aToken address ──────────────────────────────────────────
-    const aTokenEVM = await getATokenAddress();
-    const aTokenContractId = evmToContractId(aTokenEVM);
-
-    // ── Step 2: Approve WETHGateway to spend our aTokens ───────────────────
-    await approveAToken(aTokenContractId, amountWei);
-
-    // ── Step 3: Call withdrawETH on WETHGateway ─────────────────────────────
-    logger.info(
-      `Calling WETHGateway.withdrawETH — lendingPool: ${BONZO_LENDING_POOL_EVM}, ` +
-      `amount: ${amountWei}, to: ${operatorEvm}`
-    );
-
-    const tx = await new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString(BONZO_WETH_GATEWAY_ID))
-      .setGas(400_000)
-      .setFunction(
-        "withdrawETH",
-        new ContractFunctionParameters()
-          .addAddress(BONZO_LENDING_POOL_EVM) // lendingPool (NOT the gateway)
-          .addUint256(new BigNumber(amountWei))              // amount in wei
-          .addAddress(operatorEvm)            // to — receives the HBAR
-      )
-      .execute(client);
-
-    const receipt = await tx.getReceipt(client);
-    const txId = tx.transactionId.toString();
-    logger.info(
-      `Native withdraw success — tx: ${txId} status: ${receipt.status}`
-    );
-    return txId;
-  } catch (error) {
-    logger.error("Native withdraw failed", error);
+    logger.info(`withdrawETH tx submitted: ${tx.hash}`);
+    const receipt = await tx.wait();
+    logger.info(`withdrawETH confirmed: ${receipt?.hash}, status: ${receipt?.status}`);
+    return receipt?.hash ?? tx.hash;
+  } catch (error: any) {
+    logger.error("Native withdraw failed", error?.message ?? JSON.stringify(error));
     return null;
   }
 }
@@ -326,8 +215,6 @@ export function determineKeeperAction(
   volatility: VolatilityResult,
   price: number
 ): KeeperAction {
-  return { type: "TIGHTEN", reason: "Force SDK deposit to mint aTokens" };
-  
   if (threat.level === "CRITICAL" || threat.score > 0.85)
     return {
       type: "PROTECT",
