@@ -1,0 +1,27 @@
+{
+  "name": "bonzo-hedera-agent",
+  "version": "1.0.0",
+  "description": "Autonomous Hedera agent that monitors markets and protects Bonzo vault positions",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "watch": "ts-node-dev --respawn src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@hashgraph/sdk": "^2.50.0",
+    "@hashgraphonline/hedera-agent-kit": "^0.0.22",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.4",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.3"
+  }
+}
