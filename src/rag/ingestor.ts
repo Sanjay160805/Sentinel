@@ -10,7 +10,7 @@ const SCRAPER_API_URL = "https://x-scrapper-wheat.vercel.app/api/results";
  */
 export async function getRecentTweets(limit = 100): Promise<any[]> {
   try {
-    const res = await fetch(SCRAPER_API_URL);
+    const res = await fetch(SCRAPER_API_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Scraper API returned ${res.status}`);
     const data = await res.json();
     const raw = data.data || [];
@@ -78,7 +78,7 @@ export async function ingestTweets(limit: number = 50): Promise<number> {
 
 export async function getTweetCount(): Promise<number> {
     try {
-        const res = await fetch(SCRAPER_API_URL);
+        const res = await fetch(SCRAPER_API_URL, { cache: 'no-store' });
         const data = await res.json();
         return data.count || (data.data?.length ?? 0);
     } catch { return 0; }

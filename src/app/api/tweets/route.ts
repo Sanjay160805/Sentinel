@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     
     // FETCH DIRECTLY FROM THE VERCEL SCRAPER API (REAL IMPLEMENTATION)
     const res = await fetch(SCRAPER_API_URL, {
-        next: { revalidate: 30 } // Cache for 30s
+        cache: 'no-store' // Always fetch fresh to avoid caching empty states
     });
     
     if (!res.ok) throw new Error(`Scraper API returned ${res.status}`);
