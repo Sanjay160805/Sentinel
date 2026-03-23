@@ -184,26 +184,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       throw new Error("Wallet not connected");
     }
 
-    const signer = connector.signers[0];
-    
     // Dynamically import SDK elements & ethers utils
-    const { ContractExecuteTransaction, ContractId, Hbar } = await import("@hashgraph/sdk");
+    const { ContractExecuteTransaction, ContractId, Hbar, Client, TransactionId, AccountId } = await import("@hashgraph/sdk");
     const { getBytes } = await import("ethers");
+
+    // Create a testnet client for network context (node account IDs)
+    const client = Client.forTestnet();
+
+    const signer = connector.signers[0];
+    const signerAccountId = signer.getAccountId();
 
     const tx = new ContractExecuteTransaction()
       .setContractId(ContractId.fromEvmAddress(0, 0, to))
       .setGas(300000)
-      .setFunctionParameters(getBytes(data));
+      .setFunctionParameters(getBytes(data))
+      .setTransactionId(TransactionId.generate(signerAccountId))
+      .setNodeAccountIds([new AccountId(3)]); // Use a standard testnet node to avoid freezeWith network query issues
 
     if (parseFloat(amountHbar) > 0) {
       tx.setPayableAmount(Hbar.fromString(amountHbar));
     }
 
-    // Freeze with signer — HWCDAppSigner handles account ID and transaction ID generation
-    await tx.freezeWithSigner(signer);
+    // Freeze manually instead of using a client to avoid "Query.fromBytes" bugs during network map fetch
+    await tx.freeze();
 
     // Sign and execute via the wallet signer (HashPack)
     const response = await signer.call(tx);
+    
     // SDK response has transactionId
     return (response as any).transactionId?.toString() ?? response.toString();
   }, []);

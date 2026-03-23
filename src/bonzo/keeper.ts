@@ -1,7 +1,6 @@
 import { ThreatAnalysis, VaultPosition } from "@/lib/types";
 import { VolatilityResult } from "@/analysis/volatilityCalculator";
 import { getUserAccountData, borrow, repay } from "./lendingPool";
-import { getReserveData } from "./dataProvider";
 import { THREAT_THRESHOLD, BONZO_LENDING_POOL } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { KeeperAction } from "./types";
@@ -9,16 +8,7 @@ import { depositHBAR, withdrawHBAR } from "./wethGateway";
 import { ethers } from "ethers";
 
 const ADJUST_FRACTION = 0.20;
-
-/**
- * Calculate dynamic APY for HBAR based on live reserve data
- * Formula: APY = Liquidity Rate / 1e27 * 100
- */
-function calculateAPY(reserveData: any): string {
-  if (!reserveData || !reserveData.liquidityRate) return "0.00%";
-  const rate = Number(reserveData.liquidityRate) / 1e27;
-  return (rate * 100).toFixed(2) + "%";
-}
+const HBAR_APY = "94.15%"; // Static APY for HBAR deposits on Bonzo testnet
 
 // ─── Vault position ────────────────────────────────────────────────────────────
 export async function getVaultPosition(
@@ -30,16 +20,13 @@ export async function getVaultPosition(
       deposited: "0.0000",
       borrowed: "0.0000",
       healthFactor: "∞",
-      apy: "94.15%",
+      apy: HBAR_APY,
       rewards: "0.0000",
     };
   }
 
   try {
-    const [data, reserveData] = await Promise.all([
-      getUserAccountData(accountId),
-      getReserveData("0x0000000000000000000000000000000000000000") // HBAR reserve (global APY)
-    ]);
+    const data = await getUserAccountData(accountId);
 
     if (!data) throw new Error("Could not retrieve user account data from Bonzo");
 
@@ -53,7 +40,7 @@ export async function getVaultPosition(
       deposited: (Number(data.totalCollateralETH) / 1e18).toFixed(4),
       borrowed: (Number(data.totalDebtETH) / 1e18).toFixed(4),
       healthFactor,
-      apy: calculateAPY(reserveData),
+      apy: HBAR_APY,
       rewards: (Number(data.availableBorrowsETH) / 1e18).toFixed(4),
     };
   } catch (err) {
